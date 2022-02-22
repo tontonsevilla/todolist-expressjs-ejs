@@ -1,0 +1,19 @@
+<%- include("header") -%>
+
+<div id="heading" class="box">
+  <h1><%= today %></h1>
+</div>
+<div class="box">
+  <% todoList.forEach(function(item) { %>
+    <div class="item">
+      <input type="checkbox">
+      <p><%= item %></p>
+    </div>
+  <% }) %>
+  <form class="item" action="/" method="post">
+    <input type="text" name="newItem" placeholder="New Item" autocomplete="off">
+    <button type="submit" name="button">+</button>
+  </form>
+</div>
+
+<%- include("footer") -%>
