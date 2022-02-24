@@ -13,7 +13,7 @@ app.set("view engine", "ejs");
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // Main App Logic
-const mongoUri = 'mongodb://localhost:27017/todoListDB';
+const mongoUri = `mongodb+srv://admin-tonton:P%40ssw0rd@cluster0.bxoa6.mongodb.net/todoListDB`;
 const mongooseOptions = {
   useNewUrlParser: true
 };
@@ -29,136 +29,139 @@ const listSchema = new mongoose.Schema({
 });
 const List = mongoose.model("List", listSchema);
 
+const welcomeItem = new Item({
+  description: "-- Welcome to To-do List --"
+});
+const howToAddItem = new Item({
+  description: "Click the plus (+) button tto add a new item."
+});
+const howToRemoveItem = new Item({
+  description: "<-- Just check the box to remove an item."
+});
+const itemArray = [welcomeItem, howToAddItem, howToRemoveItem];
+
 // Index Page
 app.get("/", function(req, res) {
-  let todoList = [];
 
-  mongoose.connect(mongoUri, mongooseOptions, function(err) {
-    if (err) {
-      console.log(err);
+  home().catch(err => console.log(err));
+
+  async function home() {
+    await mongoose.connect(mongoUri, mongooseOptions);
+
+    let todoList = [];
+    let itemDocs = await Item.find({});
+
+    if (itemDocs.length === 0) {
+      itemDocs = await Item.insertMany(itemArray);
+
+      todoList = itemDocs;
+      mongoose.disconnect();
+
+      res.redirect("/");
     } else {
-      Item.find({}, function(err, items){
-        if (err) {
-          console.log(err);
-        } else {
-          todoList = items;
-        }
-
-        res.render("index", {
-          todoList: todoList,
-          categoryToDoList: "Today"
-        });
-
-        mongoose.disconnect();
-      });
+      todoList = itemDocs;
+      mongoose.disconnect();
     }
-  });
+
+    res.render("index", {
+      todoList: todoList,
+      categoryToDoList: "Today"
+    });
+  }
+
 });
 
 app.post("/", function(req, res) {
-  mongoose.connect(mongoUri, mongooseOptions, function(err) {
-    if (err) {
-      console.log(err);
+
+  createItem().catch(err => console.log(err));
+
+  async function createItem() {
+    await mongoose.connect(mongoUri, mongooseOptions);
+
+    let listName = _.startCase(req.body.listName);
+
+    let item = new Item({
+      description: req.body.newItem
+    });
+
+    if (listName === "Today") {
+      await item.save();
+      res.redirect("/");
     } else {
-      let listName = _.startCase(req.body.listName);
+      let listDoc = await List.findOne({name: listName});
 
-      const item = new Item({
-        description: req.body.newItem
-      });
+      listDoc.items.push(item);
+      await listDoc.save();
 
-      if (listName === "Today") {
-        item.save();
-        res.redirect("/");
-      } else {
-        List.findOne({name: listName}, function(findOneErr, docList) {
-          if (findOneErr) {
-            console.log(findOneErr);
-          } else {
-            docList.items.push(item);
-            docList.save();
-            res.redirect(`/${_.kebabCase(listName)}`);
-          }
-        });
-      }
+      res.redirect(`/${_.kebabCase(listName)}`);
     }
-  });
+  }
+
 });
 
 app.post("/delete", function(req, res) {
-  const itemId = req.body.item;
-  const listName = _.startCase(req.body.listName);
 
-  mongoose.connect(mongoUri, mongooseOptions, function(err) {
-    if (err) {
-      console.log(err);
+  deleteItem().catch(err => console.log(err));
+
+  async function deleteItem() {
+
+    const itemId = req.body.item;
+    const listName = _.startCase(req.body.listName);
+
+    await mongoose.connect(mongoUri, mongooseOptions);
+
+    if (listName === "Today") {
+      await Item.findByIdAndRemove(itemId);
+
+      res.redirect("/");
     } else {
-      if (listName === "Today") {
-        Item.findByIdAndRemove(itemId, function(errFindByIdAndRemove, docItem) {
-          if (errFindByIdAndRemove) {
-            console.log(errFindByIdAndRemove);
-          }
-        });
+      await List.findOneAndUpdate({name: listName},{$pull: {items: {_id: itemId}}});
 
-        res.redirect("/");
-      } else {
-        List.findOneAndUpdate({name: listName},
-          {$pull: {items: {_id: itemId}}},
-          function(errFindOne, docList) {
-            if (errFindOne) {
-              console.log(errFindOne);
-            } else {
-              res.redirect(`/${_.kebabCase(listName)}`);
-            }
-        });
-      }
+      res.redirect(`/${_.kebabCase(listName)}`);
     }
-  });
+
+  }
 
 });
 
 // Category To-Do List Page
 app.get("/:categoryName",  function (req, res) {
-  let todoList = [];
-  let categoryName = _.startCase(req.params.categoryName);
 
-  mongoose.connect(mongoUri, mongooseOptions, function(connErr) {
-    if (connErr) {
-      console.log(connErr);
+  category().catch(err => console.log(err));
+
+  async function category() {
+
+    let todoList = [];
+    let categoryName = _.startCase(req.params.categoryName);
+
+    await mongoose.connect(mongoUri, mongooseOptions);
+
+    let listDoc = await List.findOne({name: categoryName});
+
+    if (listDoc) {
+        todoList = listDoc.items;
+
+        await mongoose.disconnect();
+
+        res.render("index", {
+          todoList: todoList,
+          categoryToDoList: categoryName
+        });
     } else {
-      List.findOne({name: categoryName}, function(findErr, docList){
-        if (findErr) {
-          console.log(findErr);
-        } else {
-
-          if (docList) {
-              todoList = docList.items;
-              mongoose.disconnect();
-          } else {
-            let list = new List({
-              name: categoryName,
-              items: todoList
-            });
-
-            list.save(function(err) {
-              if (err) {
-                console.log(err);
-              } else {
-                console.log(`A category "${categoryName}" was Successfully added.`);
-              }
-
-              mongoose.disconnect();
-            });
-          }
-
-          res.render("index", {
-            todoList: todoList,
-            categoryToDoList: categoryName
-          });
-        }
-
+      listDoc = new List({
+        name: categoryName,
+        items: itemArray
       });
+
+      await listDoc.save();
+
+      await mongoose.disconnect();
+
+      res.redirect(`/${_.kebabCase(categoryName)}`);
     }
-  });
+
+  }
+
 });
 
 // About Page
